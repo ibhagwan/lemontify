@@ -1,0 +1,664 @@
+#!/bin/sh
+#
+#	Generic script to notify and change adjustable controls
+#	Only tested with volume (amixer) on OpenBSD
+#
+#	requirements: ttf-font-awesome, xorg-xdpyinfo
+#	inspired by /r/Kwbmm's post:
+#	https://blog.z3bra.org/2014/04/pop-it-up.html
+############################################################
+
+# how long should the popup remain?
+duration=1.5
+
+# colors
+bar_bg='#64000000'
+bar_fg='#87FFAF'
+
+#################################################
+# generates a string of filled rectangles or a 	#
+# combination of full and empty rectangles		#
+# arguments:									#
+# $1 - current level (0-100)					#
+# $2 - print empty squares? (default: 0)		#
+#################################################
+function level_graph() {
+
+	# 0xf2fa (regular=empty|bold=full)
+	# 0xf2fc wide: (regular=empty|bold=full)
+	rect_fill="\uf2fc"
+	rect_empty="%{T3}\uf2fc%{T1}"
+
+	val=$1
+	step=5
+	count=0
+	graph="%{T4} "
+	while [ $count -le 19 ]; do
+		let curr=$count*${step}
+		if [[ $curr -lt $val ]]; then
+			graph="${graph}${rect_fill}"
+		elif [[ $2 == 1 ]]; then
+			graph="${graph}${rect_empty}"
+		fi
+		((count++))
+	done
+	graph="${graph}%{T1}"
+
+	if [[ -n ${3+x} && ${3} -ne 0 ]]; then
+		graph="%{c}${graph}%{l}"
+	else
+		graph="%{l} ${graph}%{l}"
+	fi
+
+	echo -e ${graph} 
+}
+
+#################################################
+# cross-platform icon implementation			#
+# requires: font-awesome						#
+#################################################
+
+function audio_icon() {
+
+	# muted icon?
+	if [[ -n ${1+x} && ${1} == "off" ]]; then
+		ico="%{T2}\uf2e2%{T1}"
+		echo -e ${ico}
+		return;
+	fi
+
+	# ramp-high volume icon is the default
+	ico="%{T2}\uf028%{T1}"
+
+	# if the caller speicifed the current level
+	# set the appropriate ramp icon
+	if [[ -n ${2+x} ]]; then
+		if [[ ${2} -gt 30  && ${2} -le 65 ]]; then
+			ico="%{T2}\uf027%{T1}"
+		elif [[ ${2} -le 30 ]]; then
+			ico="%{T2}\uf026%{T1}"
+		fi
+	fi
+
+	echo -e ${ico}
+}
+
+function bcklight_icon() {
+
+	ico="%{T2}\uf185%{T1}"
+	echo -e ${ico}
+}
+
+function bright_icon() {
+    
+	ico="%{T2}\uf185%{T1}"
+	echo -e ${ico}
+}
+
+function kbdlight_icon() {
+	
+	if [[ -n ${2+x} && ${2} -eq 0 ]]; then
+		# 0-level icon
+		ico="%{T2}\uf673%{T1}";
+	else
+		# defult icon
+		ico="%{T2}\uf672%{T1}"
+	fi
+	echo -e ${ico}
+}
+
+#################################################
+# Linux implementation of volume control		#
+# requires: pulseaudio libpulse					#
+#################################################
+function Linux_audio_get() {
+	#pactl list sinks | grep '^[[:space:]]Volume:' | head -n $(( $SINK + 1 )) |\
+	pactl list sinks | grep '^[[:space:]]Volume:' | head -n 1 |\
+		tail -n 1 | sed -e 's,.* \([0-9][0-9]*\)%.*,\1,'
+}
+
+function Linux_audio_status() {
+    #amixer -c 1 get Master | grep "Mono:" | tr -s ' ' ';' | cut -f 7 -d ';' |\
+    amixer get Master | grep "  Front Left" | tr -s ' ' ';' | cut -f 7 -d ';' |\
+        tr -d '[]'
+}
+
+function Linux_audio_set() {
+
+	# did the caller specify new step?
+	if [[ -n ${2+x} ]]; then step=$2;
+	else step=5; fi
+
+	case "${1}" in
+		toggle)
+			pactl list short sinks | cut -f1 | while read -r line; do pactl set-sink-mute $line toggle; done
+			break
+			;;
+		off)
+			pactl list short sinks | cut -f1 | while read -r line; do pactl set-sink-volume $line 0%; done
+			break
+			;;
+		max)
+			pactl list short sinks | cut -f1 | while read -r line; do pactl set-sink-volume $line 100%; done
+			break
+			;;
+		inc)
+			pactl list short sinks | cut -f1 | while read -r line; do pactl set-sink-volume $line +${step}%; done
+			break
+			;;
+		dec)
+			pactl list short sinks | cut -f1 | while read -r line; do pactl set-sink-volume $line -${step}%; done
+			break
+			;;
+		*)
+			echo 1
+			return 1
+			;;
+	esac
+	echo 0
+	return 0
+}
+
+#################################################
+# OpenBSD implementation of volume control		#
+# notes: wasn't tested yet						#
+#################################################
+function OpenBSD_audio_get() {
+	local vol=$(bc -l <<< "scale=0;$(mixerctl outputs.master | sed 's/.*,//g')/2.55")
+	echo $vol
+}
+
+function OpenBSD_audio_status() {
+	local muted=$(mixerctl | grep outputs.master.mute=on)
+	if [[ -z ${muted} ]]; then echo "on";
+	else echo "off"; fi
+}
+
+
+function OpenBSD_audio_set() {
+
+	# did the caller specify new step?
+	if [[ -n ${2+x} ]]; then step=$2;
+    else step=5; fi
+
+    case "${1}" in
+        toggle)
+            mixerctl outputs.master.mute=toggle
+            break
+            ;;
+        off)
+            mixerctl outputs.master=0
+            break
+            ;;
+        max)
+            mixerctl outputs.master=255
+            break                                                                                           
+            ;;   
+        inc)  
+            mixerctl outputs.master=+${step}
+            break                                                                                                
+            ;;   
+        dec)  
+            mixerctl outputs.master=-${step}
+            break                                                                                                
+            ;;   
+        *)    
+            echo 1
+            return 1
+            ;;      
+    esac      
+    echo 0
+    return 0
+}
+
+#################################################
+# Linux implementation of backlight control		#
+# requires: xorg-xbacklight						#
+#################################################
+function Linux_bcklight_get {
+	local cur=$(xbacklight -get | sed 's/\..*//')
+	echo $cur
+}
+
+function Linux_bcklight_status {
+	echo "on"
+}
+
+function Linux_bcklight_set {
+
+	# did the caller specify new step?
+    if [[ -n ${2+x} ]]; then step=$2;
+    else step=5; fi
+
+    case "${1}" in
+        toggle)
+			# not implemented
+			echo 1
+			return 1
+			;;
+        off)
+			xbacklight -set 5 -time 0
+            break
+            ;;
+        max)
+            xbacklight -set 100 -time 0
+            break                                                                                           
+            ;;   
+        inc)  
+            xbacklight -inc ${step} -time 0
+            break                                                                                                
+            ;;   
+        dec)  
+            xbacklight -dec ${step} -time 0
+            break                                                                                                
+            ;;   
+        *)    
+            echo 1
+            return 1
+            ;;      
+    esac      
+    echo 0
+    return 0
+}
+
+#################################################
+# Linux implementation of brightness control    #
+# requires: xorg-xrandr							#
+#################################################
+function Linux_bright_get {
+    local cur=$(echo $(bc -l <<< $(echo $(xrandr --verbose | grep Brightness: | head -1 | cut -d: -f2 | tr -d ' ')*100)) | cut -d. -f1)
+    echo $cur
+}
+
+function Linux_bright_status {
+    echo "on"
+}
+
+function bright_inc() {
+	local step=$2
+    local val=$(bc -l <<< $(echo "($1 + $step)"))
+    if [[ $val -gt 99 ]]; then
+        echo 0.99
+    else
+        echo $(bc -l <<< $(echo "$val / 100"))
+    fi
+}
+
+function bright_dec() {
+	local step=$2
+    local val=$(bc -l <<< $(echo "($1 - $step) / 100"))
+    echo $val
+}
+
+function Linux_bright_set {
+
+    # did the caller specify new step?
+    if [[ -n ${2+x} ]]; then step=$2;
+    else step=5; fi
+
+    case "${1}" in
+        toggle)
+            # not implemented
+            echo 1
+            return 1
+			;;
+        off)
+            val=0.25
+            break
+            ;;
+        max)
+            val=0.99
+            break                                                                                           
+            ;;   
+        inc)  
+			val=$(bright_inc $3 $2)
+            break                                                                                                
+            ;;   
+        dec)  
+			val=$(bright_dec $3 $2)
+            break                                                                                                
+            ;;   
+        *)    
+            echo 1
+            return 1
+            ;;      
+	esac
+	if [[ -n ${val} ]]; then
+		xrandr --output DP1 --brightness ${val}
+		xrandr --output eDP1 --brightness ${val}
+		redshift -o > /dev/null 2>&1
+	fi
+    echo 0
+    return 0
+}
+
+#################################################
+# Linux implementation of mac kbdlight control	#
+# requires: kbdlight (from the AUR)				#
+# https://github.com/WhyNotHugo/kbdlight		#
+#################################################
+function Linux_kbdlight_get {
+    local cur=$(echo $(bc -l <<< "$(kbdlight get)/2.55") | awk '{print int($1+0.5)}')
+    echo $cur
+}
+
+function Linux_kbdlight_status {
+    echo "on"
+}
+
+function Linux_kbdlight_set {
+
+    # did the caller specify new step?
+    if [[ -n ${2+x} ]]; then step=$2;
+    else step=5; fi
+
+    case "${1}" in
+        toggle)
+            # not implemented
+            echo 1
+            return 1
+            ;;
+        off)
+            kbdlight off
+            break
+            ;;
+        max)
+            kbdlight max
+            break                                                                                           
+            ;;   
+        inc)  
+            kbdlight up ${step}%
+            break                                                                                                
+            ;;   
+        dec)  
+            kbdlight down ${step}%
+            break                                                                                                
+            ;;   
+        *)    
+            echo 1
+            return 1
+            ;;      
+    esac      
+    echo 0
+    return 0
+}
+
+#############################################################################################
+# Parse the command line arguments, parsing sample code taken from here:					#
+# https://stackoverflow.com/questions/192249/how-do-i-parse-command-line-arguments-in-bash	#
+#############################################################################################
+
+function usage {
+	echo "Usage: $0 -p {audio|bcklight|bright|kbdlight} [-h | -v | -i | -d | -o | -m | -t | -e | -r | -s <val> | -a text]"
+	#echo 14"";
+	echo "Options:";
+	echo "       -h|--help                  Show this help";
+	echo "       -v|--verbose               Print verbose output";
+	echo "       -i|--inc                   Increase current level";
+	echo "       -d|--dec                   Decreasse current level";
+	echo "       -o|--off                   Set current level to off";
+	echo "       -m|--max                   Set current level to max";
+	echo "       -t|--toggle                Toggle on|off (if applicable)";
+	echo "       -e|--empty                 Print empty squares (default=false)";
+	echo "       -r|--ramp                  Ramp icon based on level (default=false)";
+	echo "       -l|--line                  Print as one line (disable multiline)";
+	echo "       -s|--step <val>            Set increment|decrement step";
+	echo "       -a|--text <val>            Print additonal output text";
+	echo "       -p|--provider <val>        Set the current provider";
+	echo "            audio                 Set audio volume";
+	echo "            bcklight              Set screen backlight";
+	echo "            bright                Set screen brightness (xrandr)";
+	echo "            kbdlight              Set keyboard LEDs";
+}
+
+# saner programming env: these switches turn some bugs into errors
+#set -o errexit -o pipefail -o noclobber -o nounset
+set -o pipefail -o noclobber -o nounset
+
+# -allow a command to fail with !’s side effect on errexit
+# -use return value from ${PIPESTATUS[0]}, because ! hosed $?
+! getopt --test > /dev/null 
+if [[ ${PIPESTATUS[0]} -ne 4 ]]; then
+    echo '`getopt --test` failed in this environment.'
+    exit 1
+fi
+
+OPTIONS=hvp:idomterls:a:
+LONGOPTS=debug,help,verbose,provider:,inc,dec,off,max,toggle,empty,ramp,line,step:,text:
+
+# -regarding ! and PIPESTATUS see above
+# -temporarily store output to be able to check for errors
+# -activate quoting/enhanced mode (e.g. by writing out “--options”)
+# -pass arguments only via   -- "$@"   to separate them correctly
+! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@")
+if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
+    # e.g. return value is 1
+    #  then getopt has complained about wrong arguments to stdout
+	usage;
+    exit 2
+fi
+# read getopt’s output this way to handle the quoting right:
+eval set -- "$PARSED"
+
+d=0 provider= cmd= v=0 e=0 r=0 l=0 s=5 outText=
+# now enjoy the options in order and nicely split until we see --
+while true; do
+    case "$1" in
+        --debug)
+            d=1
+            shift
+            ;;
+		-h|--help)
+			usage;
+			exit 0
+			;;
+		-v|--verbose)
+			v=1
+			shift
+			;;
+		-p|--provider)
+			if [[ "$2" == "audio" || "$2" == "bcklight" || "$2" == "bright" || "$2" == "kbdlight" ]]; then
+				provider=$2
+			fi
+			shift 2
+			;;
+		-i|--inc)
+			cmd=inc
+			shift
+			;;
+		-d|--dec)
+			cmd=dec
+			shift
+			;;
+		-o|--off)
+			cmd=off
+			shift
+			;;
+		-m|--max)
+			cmd=max
+			shift
+			;;
+		-t|--toggle)
+			cmd=toggle
+			shift
+			;;
+        -e|--empty)
+            e=1
+            shift
+            ;;
+		-r|--ramp)
+			r=1
+			shift
+			;;
+		-l|--line)
+			l=1
+			shift
+			;;
+		-s|--step)
+			s="$2"
+			shift 2
+			;;
+        -a|--text)
+            outText="$2"
+            shift 2
+            ;;
+        --)
+            shift
+            break
+            ;;
+        *)
+			# never get here!
+            echo "error: error while parsing command line arguments"
+			usage;
+            exit 3
+            ;;
+    esac
+done
+
+# handle non-option arguments
+if [[ $# -gt 0 ]]; then
+    echo "error: unrecgonized option"
+	usage;
+    exit 4
+fi
+
+# can't operate without a provider
+if [[ -z ${provider} ]]; then
+	echo "error: unknown provider or provider not specified"
+	usage;
+	exit 4
+fi
+
+
+#################################################
+# generates our popup!							#
+# arguments:                                    #
+# $1 - current level (0-100)                    #
+# $2 - print empty squares? (default: 0)        #
+#################################################
+function lemontify() {
+
+	# our text
+	txt="${1} $(level_graph ${2} ${3} ${l})"
+
+	# are we using multiline or single line?
+	if [[ l -ne 0 ]]; then
+		barw=400                                                                         
+		barh=100
+		txt_size=12
+		txt_offset=0
+		ico_size=40
+		ico_offset=0
+		rect_size=10
+		rect_offset=0
+		opt_ml=""
+		if [[ -n ${4+x} ]]; then
+			txt="${txt} %{l}%{T1}${4}%{T1}%{l}"; fi
+	else
+		barw=405                                                                         
+		barh=350
+		txt_size=14
+		txt_offset=-200
+		ico_size=160
+		ico_offset=-15
+		rect_size=14
+		rect_offset=60
+		opt_ml="-m"
+		if [[ -n ${4+x} ]]; then
+			txt="${txt} %{c}%{T1}${4}%{T1}%{l}"; fi
+	fi
+
+	# geometry                                       
+	barx=$(xdpyinfo | grep dimensions | tr -s ' ' ';' | cut -f 3 -d ';' | cut -f 1 -d 'x')
+	bary=$(xdpyinfo | grep dimensions | tr -s ' ' ';' | cut -f 3 -d ';' | cut -f 2 -d 'x')
+	let barx=${barx}/2-${barw}/2
+	let bary=${bary}/3+${barh}/2
+
+	# test if you're getting the right font with `fc-match`
+	# $ fc-match FontAwesome5Pro:style=Solid:size=14   
+	# Font Awesome 5 Pro-Solid-900.otf: "Font Awesome 5 Pro" "Solid
+	# explore the aaiable icons using `xfd -fa FontAwesome5Pro:style=Solid`
+	bar_font_0="DejaVuSans:size=${txt_size}:style:Bold"
+	bar_font_1="FontAwesome5Pro:pixelsize=${ico_size}:style:Bold"
+	bar_font_2="FontAwesome5Pro:pixelsize=${rect_size}:style:Regular"
+	bar_font_3="FontAwesome5Pro:pixelsize=${rect_size}:style:Bold"
+
+	# set bar geometry and options
+	baropt="-d -g ${barw}x${barh}+${barx}+${bary}"
+
+	# finally print everything to lemonbar
+	(echo -e ${txt}; sleep ${duration}) | \
+		lemonbar -F${bar_fg} -B${bar_bg} ${opt_ml} ${baropt} \
+		-o ${txt_offset}  -f "${bar_font_0}" \
+		-o ${ico_offset}  -f "${bar_font_1}" \
+		-o ${rect_offset} -f "${bar_font_2}" \
+		-o ${rect_offset} -f "${bar_font_3}"
+}
+
+platform=$(uname -s)
+fnc_ico=${provider}_icon
+fnc_lvl=${platform}_${provider}_get
+fnc_set=${platform}_${provider}_set
+fnc_status=${platform}_${provider}_status
+retval=-1
+
+# first we perform the required  operation
+# using a platform|provider specific function
+if [[ -n ${cmd} ]]; then
+	
+	# xrandr brightness requires current level to adjust
+	if [[ ${provider} == "bright" ]]; then
+		lvl=$(eval ${fnc_lvl})
+		retval=$(eval ${fnc_set} ${cmd} ${s} ${lvl})
+	else
+		retval=$(eval ${fnc_set} ${cmd} ${s})
+	fi
+fi
+
+# get current level & status
+lvl=$(eval ${fnc_lvl})
+status=$(eval ${fnc_status})
+
+# ramp based icons and kbdlight provider require
+# current level to adjust the icon
+if [[ r -ne 0 || ${provider} == "kbdlight" ]]; then
+	ico=$(eval  ${fnc_ico} ${status} ${lvl})
+else
+	ico=$(eval  ${fnc_ico} ${status})
+fi
+
+# Adjust the icon to multiline or single line
+if [[ ${l} -ne 0 ]]; then
+	ico="%{r}$ico%{l}"
+else
+	ico="%{c}$ico%{l}"
+fi
+
+# Print debug & verbose outputs
+if [[ v -ne 0 ]]; then
+	echo "Platform:          ${platform}"
+	echo "Options:"
+	echo "    debug:         ${d}"
+	echo "    verbose:       ${v}"
+	echo "    provider:      ${provider}"
+	echo "    command:       ${cmd}"
+	echo "    empty:         ${e}"
+	echo "    ramp:          ${r}"
+	echo "    line:          ${l}"
+	echo "    step:          ${s}"
+	echo "    text:          ${outText}"
+fi
+if [[ d -ne 0 ]]; then
+	echo "Functions:"
+	echo "    ${fnc_set}() = ${retval}"
+	echo "    ${fnc_lvl}() = ${lvl}"
+	echo "    ${fnc_status}() = ${status}"
+	echo "    ${fnc_ico}() = ${ico}"
+fi
+
+if [[ -z ${ico} || -z ${lvl} ]]; then
+	echo "critical error: unable to determine platform|provider icon & level"
+	exit 5
+fi
+
+lemontify $ico $lvl $e $outText;
