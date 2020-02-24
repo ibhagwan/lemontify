@@ -586,6 +586,12 @@ function lemontify() {
 	# set bar geometry and options
 	baropt="-d -g ${barw}x${barh}+${barx}+${bary}"
 
+	# get rid of all previous lemonbars
+	# TODO: find a smarter way to kill only our instance
+	while [[ $(pgrep lemonbar) != "" ]]; do
+		pkill lemonbar
+	done
+
 	# finally print everything to lemonbar
 	(echo -e ${txt}; sleep ${duration}) | \
 		lemonbar -F${bar_fg} -B${bar_bg} ${opt_ml} ${baropt} \
