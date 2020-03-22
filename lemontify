@@ -584,7 +584,7 @@ function lemontify() {
 	bar_font_3="FontAwesome5Pro:pixelsize=${rect_size}:style:Bold"
 
 	# set bar geometry and options
-	baropt="${opt_ml} -d"
+	baropt="${opt_ml}"
 	baropt+=" -g ${barw}x${barh}+${barx}+${bary}"
 	baropt+=" -F${bar_fg} -B${bar_bg}"
 	baropt+=" -o ${txt_offset}  -f ${bar_font_0}"
