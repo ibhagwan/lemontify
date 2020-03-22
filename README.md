@@ -1,5 +1,7 @@
 ## Lemontify: OSX-inspired notifications based on lemobar
 
+For more information see my reddit post: [here](https://www.reddit.com/r/unixporn/comments/f8mhku/lemonbar_lemontify_osxinspired_notification/) or [direct link to reddit video](https://v.redd.it/wipy5o0l4ti41/DASH_1080?source=fallback)
+
 `Usage: ./lemontify -p {audio|bcklight|bright|kbdlight} [-h | -v | -i | -d | -o | -m | -t | -e | -r | -s <val> | -a text]`
 
 | Description			| Command   |
