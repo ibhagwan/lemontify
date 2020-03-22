@@ -584,7 +584,20 @@ function lemontify() {
 	bar_font_3="FontAwesome5Pro:pixelsize=${rect_size}:style:Bold"
 
 	# set bar geometry and options
-	baropt="-d -g ${barw}x${barh}+${barx}+${bary}"
+	baropt="${opt_ml} -d"
+	baropt+=" -g ${barw}x${barh}+${barx}+${bary}"
+	baropt+=" -F${bar_fg} -B${bar_bg}"
+	baropt+=" -o ${txt_offset}  -f ${bar_font_0}"
+	baropt+=" -o ${ico_offset}  -f ${bar_font_1}"
+	baropt+=" -o ${rect_offset} -f ${bar_font_2}"
+	baropt+=" -o ${rect_offset} -f ${bar_font_3}"
+
+	# Print debug & verbose outputs
+	if [[ v -ne 0 ]]; then
+		echo "Lemonbar:"
+		echo "    text:          ${txt}"
+		echo "    cmd:           lemonbar ${baropt}"
+	fi
 
 	# get rid of all previous lemonbars
 	# TODO: find a smarter way to kill only our instance
@@ -598,12 +611,7 @@ function lemontify() {
 	done
 
 	# finally print everything to lemonbar
-	(echo -e ${txt}; sleep ${duration}) | \
-		lemonbar -F${bar_fg} -B${bar_bg} ${opt_ml} ${baropt} \
-		-o ${txt_offset}  -f "${bar_font_0}" \
-		-o ${ico_offset}  -f "${bar_font_1}" \
-		-o ${rect_offset} -f "${bar_font_2}" \
-		-o ${rect_offset} -f "${bar_font_3}"
+	(echo -e ${txt}; sleep ${duration}) | lemonbar ${baropt}
 }
 
 platform=$(uname -s)
@@ -657,7 +665,7 @@ if [[ v -ne 0 ]]; then
 	echo "    ramp:          ${r}"
 	echo "    line:          ${l}"
 	echo "    step:          ${s}"
-	echo "    text:          ${outText}"
+	#echo "    text:          ${outText}"
 fi
 if [[ d -ne 0 ]]; then
 	echo "Functions:"
