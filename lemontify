@@ -588,8 +588,13 @@ function lemontify() {
 
 	# get rid of all previous lemonbars
 	# TODO: find a smarter way to kill only our instance
-	while [[ $(pgrep lemonbar) != "" ]]; do
-		pkill lemonbar
+	# while [[ $(pgrep lemonbar) != "" ]]; do
+	#	pkill lemonbar
+	# done
+	# Thanks to @Kwbmm for the below solution!
+	# https://github.com/ibhagwan/lemontify/issues/1
+	for wid in $(xdotool search --classname lemonbar); do
+		xdotool windowunmap $wid
 	done
 
 	# finally print everything to lemonbar
