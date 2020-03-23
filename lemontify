@@ -389,7 +389,7 @@ function Linux_kbdlight_set {
 #############################################################################################
 
 function usage {
-	echo "Usage: $0 -p {audio|bcklight|bright|kbdlight} [-h | -v | -i | -d | -o | -m | -t | -e | -r | -s <val> | -a text]"
+	echo "Usage: $0 -p {audio|bcklight|bright|kbdlight} [-h | -v | -i | -d | -o | -m | -t | -e | -r | -s <val> | -a text | --time <val>]"
 	#echo 14"";
 	echo "Options:";
 	echo "       -h|--help                  Show this help";
@@ -405,6 +405,8 @@ function usage {
 	echo "       -s|--step <val>            Set increment|decrement step";
 	echo "       -a|--text <val>            Print additonal output text";
 	echo "       -p|--provider <val>        Set the current provider";
+	echo "       --time <val>               Set the popup duration";
+	echo "       --debug                    Debug output";
 	echo "            audio                 Set audio volume";
 	echo "            bcklight              Set screen backlight";
 	echo "            bright                Set screen brightness (xrandr)";
@@ -424,7 +426,7 @@ if [[ ${PIPESTATUS[0]} -ne 4 ]]; then
 fi
 
 OPTIONS=hvp:idomterls:a:
-LONGOPTS=debug,help,verbose,provider:,inc,dec,off,max,toggle,empty,ramp,line,step:,text:
+LONGOPTS=debug,help,verbose,provider:,inc,dec,off,max,toggle,empty,ramp,line,step:,text:,time:
 
 # -regarding ! and PIPESTATUS see above
 # -temporarily store output to be able to check for errors
@@ -448,6 +450,16 @@ while true; do
             d=1
             shift
             ;;
+		--time)
+			decimal='^[0-9]+([.][0-9]+)?$'
+			if ! [[ $2 =~ $decimal ]] ; then
+				echo "error: Not a number:" $2 >&2;
+				exit 1
+			else
+				duration=$2
+			fi
+			shift 2
+			;;
 		-h|--help)
 			usage;
 			exit 0
@@ -659,6 +671,7 @@ if [[ v -ne 0 ]]; then
 	echo "Options:"
 	echo "    debug:         ${d}"
 	echo "    verbose:       ${v}"
+	echo "    duration:      ${duration}"
 	echo "    provider:      ${provider}"
 	echo "    command:       ${cmd}"
 	echo "    empty:         ${e}"
