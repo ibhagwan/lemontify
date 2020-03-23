@@ -1,6 +1,6 @@
-## Lemontify: OSX-inspired notifications based on lemobar
+![lemontify](lemontify.png)
 
-For more information see my reddit post: [here](https://www.reddit.com/r/unixporn/comments/f8mhku/lemonbar_lemontify_osxinspired_notification/) or [direct link to reddit video](https://v.redd.it/wipy5o0l4ti41/DASH_1080?source=fallback)
+## Lemontify: OSX-inspired notifications based on lemobar
 
 `Usage: ./lemontify -p {audio|bcklight|bright|kbdlight} [-h | -v | -i | -d | -o | -m | -t | -e | -r | -s <val> | -a text]`
 
@@ -23,3 +23,6 @@ For more information see my reddit post: [here](https://www.reddit.com/r/unixpor
 |<div style="text-align: right">provider:bcklight</div>	|Set screen backlight|
 |<div style="text-align: right">provider:bright</div>	|Set screen brightness (xrandr)|
 |<div style="text-align: right">provider:kbdlight</div>	|Set keyboard LEDs|
+
+
+For more information see my reddit post: [here](https://www.reddit.com/r/unixporn/comments/f8mhku/lemonbar_lemontify_osxinspired_notification/) or [direct link to reddit video](https://v.redd.it/wipy5o0l4ti41/DASH_1080?source=fallback)
