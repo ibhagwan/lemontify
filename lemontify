@@ -112,8 +112,8 @@ function kbdlight_icon() {
 # requires: pulseaudio libpulse					#
 #################################################
 function Linux_audio_get() {
-    pacmd list-sinks | grep -A 15 '\* index' | grep 'volume:' |\
-    grep -v 'base volume:' | awk -F : '{print $3}' | grep -oP '.{0,3}%' |\
+  pactl list sinks | grep -A 15 'Sink' | grep 'Volume:' |\
+    grep -v 'Base Volume:' | awk -F : '{print $3}' | grep -oP '.{0,3}%' |\
     sed s/.$// | tr -d ' '
 }
 
