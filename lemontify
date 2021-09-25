@@ -3,7 +3,7 @@
 #	Generic script to notify and change adjustable controls
 #	Only tested with volume (amixer) on OpenBSD
 #
-#	requirements: ttf-font-awesome, xorg-xdpyinfo
+#	requirements: Nerd font, xrandr, xdpyinfo, bc, sed, awk
 #	inspired by /r/Kwbmm's post:
 #	https://blog.z3bra.org/2014/04/pop-it-up.html
 ############################################################
@@ -15,6 +15,19 @@ duration=1.5
 bar_bg='#64000000'
 bar_fg='#87FFAF'
 
+# Test if you're getting the right font with `fc-match`
+# ❯ fc-match InputMonoNerdFont:style=Bold
+# InputMono Bold Nerd Font Complete.ttf: "InputMono Nerd Font" "Bold"
+#
+# Explore the available icons using:
+# ❯ xfd -fa InputMonoNerdFont:style=Bold
+icon_font="InputMonoNerdFont"
+text_font="DejaVuSans:style:Bold"
+
+# null command/text
+# Do not change
+NULL=NULL
+
 #################################################
 # generates a string of filled rectangles or a 	#
 # combination of full and empty rectangles		#
@@ -22,35 +35,38 @@ bar_fg='#87FFAF'
 # $1 - current level (0-100)					#
 # $2 - print empty squares? (default: 0)		#
 #################################################
-function level_graph() {
+level_graph() {
 
-	# 0xf2fa (regular=empty|bold=full)
-	# 0xf2fc wide: (regular=empty|bold=full)
-	rect_fill="\uf2fc"
-	rect_empty="%{T3}\uf2fc%{T1}"
+    # to figure out the correct codes use
+    # printf '\u2589' | od -b
+    # Nerd font
+	# rect_fill="\u2589"
+	# rect_empty="%{T3}\u25a1%{T1}"
+	rect_fill="\342\226\211"
+	rect_empty="%{T3}\342\226\241%{T1}"
 
 	val=$1
 	step=5
 	count=0
 	graph="%{T4} "
 	while [ $count -le 19 ]; do
-		let curr=$count*${step}
-		if [[ $curr -lt $val ]]; then
+        curr=$(echo $count*${step} | bc -l)
+		if [ $curr -lt $val ]; then
 			graph="${graph}${rect_fill}"
-		elif [[ $2 == 1 ]]; then
+		elif [ $2 = 1 ]; then
 			graph="${graph}${rect_empty}"
 		fi
-		((count++))
+        count=$(echo $count+1 | bc -l)
 	done
 	graph="${graph}%{T1}"
 
-	if [[ -n ${3+x} && ${3} -ne 0 ]]; then
+	if [ -n ${3+x} ] && [ ${3} -ne 0 ]; then
 		graph="%{c}${graph}%{l}"
 	else
 		graph="%{l} ${graph}%{l}"
 	fi
 
-	echo -e ${graph} 
+	echo ${graph}
 }
 
 #################################################
@@ -58,76 +74,80 @@ function level_graph() {
 # requires: font-awesome						#
 #################################################
 
-function audio_icon() {
+audio_icon() {
 
 	# muted icon?
-	if [[ -n ${1+x} && ${1} == "off" ]]; then
-		ico="%{T2}\uf2e2%{T1}"
-		echo -e ${ico}
+	if [ -n ${1+x} ] && [ ${1} = "yes" ]; then
+		# ico="%{T2}\uf466%{T1}"
+		ico="%{T2}\357\221\246%{T1}"
+		echo ${ico}
 		return;
 	fi
 
 	# ramp-high volume icon is the default
-	ico="%{T2}\uf028%{T1}"
+	# ico="%{T2}\uf028%{T1}"
+	ico="%{T2}\357\200\250%{T1}"
 
 	# if the caller speicifed the current level
 	# set the appropriate ramp icon
-	if [[ -n ${2+x} ]]; then
-		if [[ ${2} -gt 30  && ${2} -le 65 ]]; then
-			ico="%{T2}\uf027%{T1}"
-		elif [[ ${2} -le 30 ]]; then
-			ico="%{T2}\uf026%{T1}"
+	if [ ${2} -ne -1 ]; then
+		if [ ${2} -gt 30 ] && [ ${2} -le 65 ]; then
+			# ico="%{T2}\uf027%{T1}"
+			ico="%{T2}\357\200\247%{T1}"
+		elif [ ${2} -le 30 ]; then
+			# ico="%{T2}\uf026%{T1}"
+			ico="%{T2}\357\200\246%{T1}"
 		fi
 	fi
 
-	echo -e ${ico}
+	echo ${ico}
 }
 
-function bcklight_icon() {
+bcklight_icon() {
 
-	ico="%{T2}\uf185%{T1}"
-	echo -e ${ico}
+	# ico="%{T2}\uf185%{T1}"
+	ico="%{T2}\357\206\205%{T1}"
+	echo ${ico}
 }
 
-function bright_icon() {
+bright_icon() {
     
-	ico="%{T2}\uf185%{T1}"
-	echo -e ${ico}
+	# ico="%{T2}\uf185%{T1}"
+	ico="%{T2}\357\206\205%{T1}"
+	echo ${ico}
 }
 
-function kbdlight_icon() {
+kbdlight_icon() {
 	
-	if [[ -n ${2+x} && ${2} -eq 0 ]]; then
+	if [ ${2} -eq 0 ]; then
 		# 0-level icon
-		ico="%{T2}\uf673%{T1}";
+		# ico="%{T2}\uf40b%{T1}";
+		ico="%{T2}\357\220\213%{T1}";
 	else
 		# defult icon
-		ico="%{T2}\uf672%{T1}"
+		# ico="%{T2}\uf40b%{T1}"
+		ico="%{T2}\357\220\213%{T1}";
 	fi
-	echo -e ${ico}
+	echo ${ico}
 }
 
 #################################################
 # Linux implementation of volume control		#
 # requires: pulseaudio libpulse					#
 #################################################
-function Linux_audio_get() {
-  pactl list sinks | grep -A 15 'Sink' | grep 'Volume:' |\
+Linux_audio_get() {
+  pactl list sinks | grep -A 15 'Sink #0' | grep 'Volume:' |\
     grep -v 'Base Volume:' | awk -F : '{print $3}' | grep -oP '.{0,3}%' |\
     sed s/.$// | tr -d ' '
 }
 
-function Linux_audio_status() {
-    #amixer -c 1 get Master | grep "Mono:" | tr -s ' ' ';' | cut -f 7 -d ';' |\
-    amixer get Master | grep "  Front Left" | tr -s ' ' ';' | cut -f 7 -d ';' |\
-        tr -d '[]'
+Linux_audio_status() {
+    pactl list sinks | grep -A 15 "Sink #0" | grep "^[[:space:]]Mute:" | cut -f 2 -d ':' | tr -d ' '
 }
 
-function Linux_audio_set() {
+Linux_audio_set() {
 
-	# did the caller specify new step?
-	if [[ -n ${2+x} ]]; then step=$2;
-	else step=5; fi
+    local step=$2
 
 	case "${1}" in
 		toggle)
@@ -163,23 +183,21 @@ function Linux_audio_set() {
 # OpenBSD implementation of volume control		#
 # notes: wasn't tested yet						#
 #################################################
-function OpenBSD_audio_get() {
-	local vol=$(bc -l <<< "scale=0;$(mixerctl outputs.master | sed 's/.*,//g')/2.55")
+OpenBSD_audio_get() {
+	# local vol=$(bc -l <<< "scale=0;$(mixerctl outputs.master | sed 's/.*,//g')/2.55")
 	echo $vol
 }
 
-function OpenBSD_audio_status() {
+OpenBSD_audio_status() {
 	local muted=$(mixerctl | grep outputs.master.mute=on)
-	if [[ -z ${muted} ]]; then echo "on";
+	if [ -z ${muted} ]; then echo "on";
 	else echo "off"; fi
 }
 
 
-function OpenBSD_audio_set() {
+OpenBSD_audio_set() {
 
-	# did the caller specify new step?
-	if [[ -n ${2+x} ]]; then step=$2;
-    else step=5; fi
+    local step=$2
 
     case "${1}" in
         toggle)
@@ -196,11 +214,11 @@ function OpenBSD_audio_set() {
             ;;   
         inc)  
             mixerctl outputs.master=+${step}
-            break                                                                                                
+            break
             ;;   
         dec)  
             mixerctl outputs.master=-${step}
-            break                                                                                                
+            break
             ;;   
         *)    
             echo 1
@@ -215,20 +233,18 @@ function OpenBSD_audio_set() {
 # Linux implementation of backlight control		#
 # requires: xorg-xbacklight						#
 #################################################
-function Linux_bcklight_get {
+Linux_bcklight_get() {
 	local cur=$(xbacklight -get | sed 's/\..*//')
 	echo $cur
 }
 
-function Linux_bcklight_status {
+Linux_bcklight_status() {
 	echo "on"
 }
 
-function Linux_bcklight_set {
+Linux_bcklight_set() {
 
-	# did the caller specify new step?
-    if [[ -n ${2+x} ]]; then step=$2;
-    else step=5; fi
+    local step=$2
 
     case "${1}" in
         toggle)
@@ -246,11 +262,11 @@ function Linux_bcklight_set {
             ;;   
         inc)  
             xbacklight -inc ${step} -time 0
-            break                                                                                                
+            break
             ;;   
         dec)  
             xbacklight -dec ${step} -time 0
-            break                                                                                                
+            break
             ;;   
         *)    
             echo 1
@@ -265,36 +281,34 @@ function Linux_bcklight_set {
 # Linux implementation of brightness control    #
 # requires: xorg-xrandr							#
 #################################################
-function Linux_bright_get {
-    local cur=$(echo $(bc -l <<< $(echo $(xrandr --verbose | grep Brightness: | head -1 | cut -d: -f2 | tr -d ' ')*100)) | cut -d. -f1)
+Linux_bright_get() {
+    local cur=$(xrandr --verbose | grep Brightness: | head -1 | cut -d. -f2)
     echo $cur
 }
 
-function Linux_bright_status {
+Linux_bright_status() {
     echo "on"
 }
 
-function bright_inc() {
+bright_inc() {
 	local step=$2
-    local val=$(bc -l <<< $(echo "($1 + $step)"))
-    if [[ $val -gt 99 ]]; then
+    local val=$(echo "($1 + $step)" | bc -l)
+    if [ $val -gt 99 ]; then
         echo 0.99
     else
-        echo $(bc -l <<< $(echo "$val / 100"))
+        echo $(echo "$val / 100" | bc -l)
     fi
 }
 
-function bright_dec() {
+bright_dec() {
 	local step=$2
-    local val=$(bc -l <<< $(echo "($1 - $step) / 100"))
+    local val=$(echo "($1 - $step) / 100" | bc -l)
     echo $val
 }
 
-function Linux_bright_set {
+Linux_bright_set() {
 
-    # did the caller specify new step?
-    if [[ -n ${2+x} ]]; then step=$2;
-    else step=5; fi
+    local step=$2
 
     case "${1}" in
         toggle)
@@ -312,20 +326,20 @@ function Linux_bright_set {
             ;;   
         inc)  
 			val=$(bright_inc $3 $2)
-            break                                                                                                
+            break
             ;;   
         dec)  
 			val=$(bright_dec $3 $2)
-            break                                                                                                
+            break
             ;;   
         *)    
             echo 1
             return 1
             ;;      
 	esac
-	if [[ -n ${val} ]]; then
-		xrandr --output DP1 --brightness ${val}
-		xrandr --output eDP1 --brightness ${val}
+	if [ -n ${val} ]; then
+        display=$(xrandr | grep " connected" | cut -d' ' -f1)
+		xrandr --output ${display} --brightness ${val}
 		redshift -o > /dev/null 2>&1
 	fi
     echo 0
@@ -337,20 +351,18 @@ function Linux_bright_set {
 # requires: kbdlight (from the AUR)				#
 # https://github.com/WhyNotHugo/kbdlight		#
 #################################################
-function Linux_kbdlight_get {
-    local cur=$(echo $(bc -l <<< "$(kbdlight get)/2.55") | awk '{print int($1+0.5)}')
+Linux_kbdlight_get() {
+    local cur=$(echo $(kbdlight get)/2.55 | bc -l | awk '{print int($1+0.5)}')
     echo $cur
 }
 
-function Linux_kbdlight_status {
+Linux_kbdlight_status() {
     echo "on"
 }
 
-function Linux_kbdlight_set {
+Linux_kbdlight_set() {
 
-    # did the caller specify new step?
-    if [[ -n ${2+x} ]]; then step=$2;
-    else step=5; fi
+    local step=$2
 
     case "${1}" in
         toggle)
@@ -368,11 +380,11 @@ function Linux_kbdlight_set {
             ;;   
         inc)  
             kbdlight up ${step}%
-            break                                                                                                
+            break
             ;;   
         dec)  
             kbdlight down ${step}%
-            break                                                                                                
+            break
             ;;   
         *)    
             echo 1
@@ -388,7 +400,7 @@ function Linux_kbdlight_set {
 # https://stackoverflow.com/questions/192249/how-do-i-parse-command-line-arguments-in-bash	#
 #############################################################################################
 
-function usage {
+usage() {
 	echo "Usage: $0 -p {audio|bcklight|bright|kbdlight} [-h | -v | -i | -d | -o | -m | -t | -e | -r | -s <val> | -a text | --time <val>]"
 	#echo 14"";
 	echo "Options:";
@@ -415,12 +427,12 @@ function usage {
 
 # saner programming env: these switches turn some bugs into errors
 #set -o errexit -o pipefail -o noclobber -o nounset
-set -o pipefail -o noclobber -o nounset
+set -o noclobber -o nounset
 
 # -allow a command to fail with !’s side effect on errexit
 # -use return value from ${PIPESTATUS[0]}, because ! hosed $?
-! getopt --test > /dev/null 
-if [[ ${PIPESTATUS[0]} -ne 4 ]]; then
+getopt --test > /dev/null 
+if [ $? -ne 4 ]; then
     echo '`getopt --test` failed in this environment.'
     exit 1
 fi
@@ -432,8 +444,8 @@ LONGOPTS=debug,help,verbose,provider:,inc,dec,off,max,toggle,empty,ramp,line,ste
 # -temporarily store output to be able to check for errors
 # -activate quoting/enhanced mode (e.g. by writing out “--options”)
 # -pass arguments only via   -- "$@"   to separate them correctly
-! PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@")
-if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
+PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTS --name "$0" -- "$@")
+if [ $? -ne 0 ]; then
     # e.g. return value is 1
     #  then getopt has complained about wrong arguments to stdout
 	usage;
@@ -442,7 +454,7 @@ fi
 # read getopt’s output this way to handle the quoting right:
 eval set -- "$PARSED"
 
-d=0 provider= cmd= v=0 e=0 r=0 l=0 s=5 outText=
+d=0 provider= cmd=$NULL v=0 e=0 r=0 l=0 s=5 outText=$NULL
 # now enjoy the options in order and nicely split until we see --
 while true; do
     case "$1" in
@@ -451,13 +463,15 @@ while true; do
             shift
             ;;
 		--time)
-			decimal='^[0-9]+([.][0-9]+)?$'
-			if ! [[ $2 =~ $decimal ]] ; then
-				echo "error: Not a number:" $2 >&2;
-				exit 1
-			else
-				duration=$2
-			fi
+            case $2 in
+                ''|*[!1-9]*)
+                    echo "error: Invalid duration:" $2 >&2;
+                    exit 1
+                    ;;
+                *)
+                    duration=$2
+                    ;;
+            esac
 			shift 2
 			;;
 		-h|--help)
@@ -469,7 +483,10 @@ while true; do
 			shift
 			;;
 		-p|--provider)
-			if [[ "$2" == "audio" || "$2" == "bcklight" || "$2" == "bright" || "$2" == "kbdlight" ]]; then
+			if    [ "$2" = "audio" ]    \
+               || [ "$2" = "bcklight" ] \
+               || [ "$2" = "bright" ]   \
+               || [ "$2" = "kbdlight" ]; then
 				provider=$2
 			fi
 			shift 2
@@ -507,7 +524,15 @@ while true; do
 			shift
 			;;
 		-s|--step)
-			s="$2"
+            case $2 in
+                ''|*[!0-9]*)
+                    echo "error: Invalid step:" $2 >&2;
+                    exit 1
+                    ;;
+                *)
+                    s=$2
+                    ;;
+            esac
 			shift 2
 			;;
         -a|--text)
@@ -528,19 +553,27 @@ while true; do
 done
 
 # handle non-option arguments
-if [[ $# -gt 0 ]]; then
+if [ $# -gt 0 ]; then
     echo "error: unrecgonized option"
 	usage;
     exit 4
 fi
 
 # can't operate without a provider
-if [[ -z ${provider} ]]; then
+if [ -z ${provider} ]; then
 	echo "error: unknown provider or provider not specified"
 	usage;
 	exit 4
 fi
 
+# verify we have the right version of lemonbar
+echo "" | lemonbar -m 2>&1 | grep invalid
+if [ $? -eq 0  ]; then
+    echo "You need lemonbar multiline version to use this program properly"
+    echo "Download from: https://github.com/ibhagwan/bar"
+    echo "Reverting to single line"
+    l=1
+fi
 
 #################################################
 # generates our popup!							#
@@ -548,64 +581,60 @@ fi
 # $1 - current level (0-100)                    #
 # $2 - print empty squares? (default: 0)        #
 #################################################
-function lemontify() {
+lemontify() {
 
 	# our text
 	txt="${1} $(level_graph ${2} ${3} ${l})"
 
 	# are we using multiline or single line?
-	if [[ l -ne 0 ]]; then
-		barw=400                                                                         
-		barh=100
-		txt_size=12
-		txt_offset=0
-		ico_size=40
+	if [ $l -ne 0 ]; then
+		barw=580
+		barh=120
+		txt_size=14
+		txt_offset=-15
+		ico_size=70
 		ico_offset=0
-		rect_size=10
-		rect_offset=0
+		rect_size=26
+		rect_offset=-25
 		opt_ml=""
-		if [[ -n ${4+x} ]]; then
-			txt="${txt} %{l}%{T1}${4}%{T1}%{l}"; fi
+		if [ ! ${4} = $NULL ]; then
+			txt="${txt} %{r}%{O-0}%{T1}${4}%{T1}%{r}"; fi
 	else
-		barw=405                                                                         
+		barw=400
 		barh=350
 		txt_size=14
-		txt_offset=-200
-		ico_size=160
-		ico_offset=-15
-		rect_size=14
-		rect_offset=60
+		txt_offset=-215
+		ico_size=180
+		ico_offset=-20
+		rect_size=26
+		rect_offset=40
 		opt_ml="-m"
-		if [[ -n ${4+x} ]]; then
+		if [ ! ${4} = $NULL ]; then
 			txt="${txt} %{c}%{T1}${4}%{T1}%{l}"; fi
 	fi
+
+    bar_font_0="${text_font}:size=${txt_size}"                     # txt font
+    bar_font_1="${icon_font}:pixelsize=${ico_size}:Style:Bold"    # icon font
+    bar_font_2="${icon_font}:pixelsize=${rect_size}:Style:Bold"   # full rect
+    bar_font_3="${icon_font}:pixelsize=${rect_size}:Style:Bold"   # empty rect
 
 	# geometry                                       
 	barx=$(xdpyinfo | grep dimensions | tr -s ' ' ';' | cut -f 3 -d ';' | cut -f 1 -d 'x')
 	bary=$(xdpyinfo | grep dimensions | tr -s ' ' ';' | cut -f 3 -d ';' | cut -f 2 -d 'x')
-	let barx=${barx}/2-${barw}/2
-	let bary=${bary}/3+${barh}/2
-
-	# test if you're getting the right font with `fc-match`
-	# $ fc-match FontAwesome5Pro:style=Solid:size=14   
-	# Font Awesome 5 Pro-Solid-900.otf: "Font Awesome 5 Pro" "Solid
-	# explore the aaiable icons using `xfd -fa FontAwesome5Pro:style=Solid`
-	bar_font_0="DejaVuSans:size=${txt_size}:style:Bold"
-	bar_font_1="FontAwesome5Pro:pixelsize=${ico_size}:style:Bold"
-	bar_font_2="FontAwesome5Pro:pixelsize=${rect_size}:style:Regular"
-	bar_font_3="FontAwesome5Pro:pixelsize=${rect_size}:style:Bold"
+    barx=$(echo ${barx}/2-${barw}/2 | bc -l | cut -d. -f1)
+    bary=$(echo ${bary}/3+${barh}/2 | bc -l | cut -d. -f1)
 
 	# set bar geometry and options
-	baropt="${opt_ml}"
-	baropt+=" -g ${barw}x${barh}+${barx}+${bary}"
-	baropt+=" -F${bar_fg} -B${bar_bg}"
-	baropt+=" -o ${txt_offset}  -f ${bar_font_0}"
-	baropt+=" -o ${ico_offset}  -f ${bar_font_1}"
-	baropt+=" -o ${rect_offset} -f ${bar_font_2}"
-	baropt+=" -o ${rect_offset} -f ${bar_font_3}"
+	baropt="${opt_ml} -d"
+	baropt="${baropt} -g ${barw}x${barh}+${barx}+${bary}"
+	baropt="${baropt} -F${bar_fg} -B${bar_bg}"
+	baropt="${baropt} -o ${txt_offset}  -f ${bar_font_0}"
+	baropt="${baropt} -o ${ico_offset}  -f ${bar_font_1}"
+	baropt="${baropt} -o ${rect_offset} -f ${bar_font_2}"
+	baropt="${baropt} -o ${rect_offset} -f ${bar_font_3}"
 
 	# Print debug & verbose outputs
-	if [[ v -ne 0 ]]; then
+	if [ $v -ne 0 ]; then
 		echo "Lemonbar:"
 		echo "    text:          ${txt}"
 		echo "    cmd:           lemonbar ${baropt}"
@@ -613,7 +642,7 @@ function lemontify() {
 
 	# get rid of all previous lemonbars
 	# TODO: find a smarter way to kill only our instance
-	# while [[ $(pgrep lemonbar) != "" ]]; do
+	# while [ $(pgrep lemonbar) != "" ]; do
 	#	pkill lemonbar
 	# done
 	# Thanks to @Kwbmm for the below solution!
@@ -623,7 +652,7 @@ function lemontify() {
 	done
 
 	# finally print everything to lemonbar
-	(echo -e ${txt}; sleep ${duration}) | lemonbar ${baropt}
+	(echo ${txt}; sleep ${duration}) | lemonbar ${baropt}
 }
 
 platform=$(uname -s)
@@ -635,10 +664,10 @@ retval=-1
 
 # first we perform the required  operation
 # using a platform|provider specific function
-if [[ -n ${cmd} ]]; then
+if [ -n ${cmd} ]; then
 	
 	# xrandr brightness requires current level to adjust
-	if [[ ${provider} == "bright" ]]; then
+	if [ ${provider} = "bright" ]; then
 		lvl=$(eval ${fnc_lvl})
 		retval=$(eval ${fnc_set} ${cmd} ${s} ${lvl})
 	else
@@ -652,21 +681,21 @@ status=$(eval ${fnc_status})
 
 # ramp based icons and kbdlight provider require
 # current level to adjust the icon
-if [[ r -ne 0 || ${provider} == "kbdlight" ]]; then
+if [ $r -ne 0 ] || [ ${provider} = "kbdlight" ]; then
 	ico=$(eval  ${fnc_ico} ${status} ${lvl})
 else
-	ico=$(eval  ${fnc_ico} ${status})
+	ico=$(eval  ${fnc_ico} ${status} -1)
 fi
 
 # Adjust the icon to multiline or single line
-if [[ ${l} -ne 0 ]]; then
-	ico="%{r}$ico%{l}"
+if [ ${l} -ne 0 ]; then
+	ico="%{l}%{O+35}$ico%{l}"
 else
-	ico="%{c}$ico%{l}"
+	ico="%{c}%{O-50}$ico%{l}"
 fi
 
 # Print debug & verbose outputs
-if [[ v -ne 0 ]]; then
+if [ $v -ne 0 ]; then
 	echo "Platform:          ${platform}"
 	echo "Options:"
 	echo "    debug:         ${d}"
@@ -678,9 +707,9 @@ if [[ v -ne 0 ]]; then
 	echo "    ramp:          ${r}"
 	echo "    line:          ${l}"
 	echo "    step:          ${s}"
-	#echo "    text:          ${outText}"
+	echo "    text:          ${outText}"
 fi
-if [[ d -ne 0 ]]; then
+if [ $d -ne 0 ]; then
 	echo "Functions:"
 	echo "    ${fnc_set}() = ${retval}"
 	echo "    ${fnc_lvl}() = ${lvl}"
@@ -688,7 +717,7 @@ if [[ d -ne 0 ]]; then
 	echo "    ${fnc_ico}() = ${ico}"
 fi
 
-if [[ -z ${ico} || -z ${lvl} ]]; then
+if [ -z "${ico}" ] || [ -z "${lvl}" ]; then
 	echo "critical error: unable to determine platform|provider icon & level"
 	exit 5
 fi
