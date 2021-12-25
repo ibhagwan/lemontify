@@ -632,6 +632,9 @@ lemontify() {
 	baropt="${baropt} -o ${ico_offset}  -f ${bar_font_1}"
 	baropt="${baropt} -o ${rect_offset} -f ${bar_font_2}"
 	baropt="${baropt} -o ${rect_offset} -f ${bar_font_3}"
+    
+    # replace % with %% for printf to work
+    txt=$(echo ${txt} | sed -e 's/%/%%/g')
 
 	# Print debug & verbose outputs
 	if [ $v -ne 0 ]; then
@@ -652,7 +655,7 @@ lemontify() {
 	done
 
 	# finally print everything to lemonbar
-	(echo ${txt}; sleep ${duration}) | lemonbar ${baropt}
+	(printf "${txt}"; sleep ${duration}) | lemonbar ${baropt}
 }
 
 platform=$(uname -s)
